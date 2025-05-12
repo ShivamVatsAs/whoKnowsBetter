@@ -1,0 +1,37 @@
+{
+  "name": "couples-quiz-connect-root",
+  "version": "1.0.0",
+  "description": "Root project for the Couple's Quiz Connect MERN application. Manages concurrent running of backend and frontend for local development.",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "comment-server": "This script runs the backend development server (nodemon).",
+    "server": "npm run dev --prefix backend",
+    "comment-client": "This script runs the frontend Vite development server.",
+    "client": "npm run dev --prefix frontend",
+    "comment-dev": "This script runs both the backend and frontend servers concurrently for easy local development.",
+    "dev": "concurrently \"npm:server\" \"npm:client\"",
+    "comment-start": "This script typically would run the backend in a production-like mode. For Vercel, deployment is handled via vercel.json.",
+    "start": "npm run start --prefix backend",
+    "postinstall": "echo 'Remember to run npm install in both /backend and /frontend directories if you haven_t already.' && exit 0"
+  },
+  "keywords": [
+    "mern",
+    "react",
+    "vite",
+    "nodejs",
+    "express",
+    "mongodb",
+    "quiz",
+    "couple"
+  ],
+  "author": "Shivam (with AI assistance)",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
