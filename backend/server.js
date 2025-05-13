@@ -8,38 +8,32 @@ const cors = require('cors');     // For enabling Cross-Origin Resource Sharing
 const connectDB = require('./config/db'); // Our database connection function
 
 // --- Load Environment Variables ---
-// For local development, this loads variables from your `backend/.env` file.
-// On Vercel, environment variables are set in the project settings.
 dotenv.config();
 
 // --- Initialize Express App ---
 const app = express();
 
 // --- Connect to MongoDB ---
-// This will use MONGO_URI from .env locally, or from Vercel's env vars when deployed.
-connectDB();
+// This is called when the module loads. If it throws an error (e.g., can't connect),
+// the serverless function might fail to initialize properly.
+connectDB().catch(err => {
+  // This catch is important for an unhandled promise rejection if connectDB itself fails
+  // and isn't awaited at the top level of a request-response cycle.
+  console.error('[SERVER_INIT] CRITICAL: Failed to connect to MongoDB during initial setup.', err);
+  // In a serverless environment, you might not be able to gracefully process.exit().
+  // The function will likely fail to serve requests if DB is down.
+  // Vercel should log this console error.
+});
+
 
 // --- Middleware ---
 
 // CORS Configuration:
 const allowedOrigins = [
   'http://localhost:5173', // Your local frontend development server
-  // IMPORTANT FOR PRODUCTION:
-  // Add your Vercel frontend URL here AFTER it is deployed.
-  // You can also set this via an environment variable on Vercel, e.g., process.env.FRONTEND_URL
-  // Example: 'https://your-frontend-app-name.vercel.app'
 ];
 
-// Dynamically add the Vercel frontend URL if available (more robust for preview deployments)
-// VERCEL_URL is an environment variable automatically set by Vercel for preview deployments,
-// containing the full URL of the deployment.
-// For production deployments, you might have a custom domain or a specific Vercel URL.
-// It's often best to set a specific FRONTEND_URL environment variable in Vercel for your production frontend.
 if (process.env.VERCEL_URL && process.env.NODE_ENV === 'production') {
-  // For Vercel preview deployments, the URL changes.
-  // This attempts to allow the preview frontend to access the API.
-  // Note: VERCEL_URL might be just the domain, so ensure you add https://
-  // A more reliable method for production is to explicitly set FRONTEND_URL.
   if (!allowedOrigins.includes(`https://${process.env.VERCEL_URL}`)) {
       allowedOrigins.push(`https://${process.env.VERCEL_URL}`);
   }
@@ -51,19 +45,18 @@ if (process.env.FRONTEND_URL && !allowedOrigins.includes(process.env.FRONTEND_UR
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests during testing)
-    if (!origin && process.env.NODE_ENV !== 'production') { // Be stricter in production
+    if (!origin && process.env.NODE_ENV !== 'production') {
         return callback(null, true);
     }
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}. Allowed origins: ${allowedOrigins.join(', ')}`;
-      console.error(msg); // Log CORS errors for debugging
-      callback(new Error(msg), false);
+      console.warn("[CORS_REJECTION] " + msg); // Log as warn, not error, as this is a policy rejection
+      callback(new Error(msg), false); // This error will be caught by the global error handler
     }
   },
-  credentials: true // If you plan to use cookies or authorization headers
+  credentials: true
 }));
 
 
@@ -80,36 +73,46 @@ app.get('/', (req, res) => {
 });
 
 // --- Mount API Routes ---
+// If connectDB() failed, these routes might still be mounted but Mongoose operations will fail.
 app.use('/api/users', userRoutes);
 app.use('/api/questions', questionRoutes);
 
 // --- Basic Not Found (404) Handler ---
-// This catches any requests that didn't match the routes above.
 app.use((req, res, next) => {
-  res.status(404).json({ message: `Endpoint not found: ${req.method} ${req.originalUrl}` });
+  // If no routes matched, create a 404 error and pass it to the global error handler
+  const error = new Error(`Endpoint not found: ${req.method} ${req.originalUrl}`);
+  error.statusCode = 404;
+  next(error);
 });
 
 // --- Global Error Handling Middleware ---
 // This catches errors passed by next(err) in your route handlers.
 app.use((err, req, res, next) => {
-  console.error("Global Error Handler Caught:", err.message);
-  if (process.env.NODE_ENV === 'development') {
-    console.error(err.stack); // Log full stack trace in development
-  }
+  console.error("--- GLOBAL ERROR HANDLER CAUGHT ---");
+  console.error("Timestamp:", new Date().toISOString());
+  console.error("Request URL:", req.originalUrl);
+  console.error("Request Method:", req.method);
+  console.error("Error Name:", err.name);
+  console.error("Error Message:", err.message);
+  console.error("Error Object:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2)); // Stringify to see all properties
+  console.error("Error Stack:", err.stack);
 
-  const statusCode = err.statusCode || res.statusCode === 200 ? 500 : res.statusCode;
+  const statusCode = err.statusCode || 500;
+  
+  // Send a more generic message for actual 500s in production to avoid leaking details
+  const responseMessage = (statusCode === 500 && process.env.NODE_ENV === 'production') 
+                          ? 'An unexpected server error occurred. Please check server logs.' 
+                          : (err.message || 'An error occurred.');
+
   res.status(statusCode).json({
-    message: err.message || 'An unexpected server error occurred.',
-    // Optionally, include stack trace in development for easier debugging
-    // stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    message: responseMessage,
+    // Optionally, if you want to provide a reference for yourself:
+    // errorId: req.headers['x-vercel-id'] // Vercel request ID
   });
 });
 
 // --- Conditionally Start the Server for Local Development ---
-// The `app.listen` part is only for when you run the server directly (e.g., locally).
-// Vercel handles the server listening part itself when deploying as a serverless function.
-// `process.env.VERCEL_ENV` can be 'production', 'preview', or 'development' (when using `vercel dev`)
-if (!process.env.VERCEL_ENV || process.env.VERCEL_ENV === 'development') { // Run listen locally or with `vercel dev`
+if (!process.env.VERCEL_ENV || process.env.VERCEL_ENV === 'development') {
   const PORT = process.env.PORT || 5001;
   app.listen(PORT, () => {
     console.log(`---- Backend Server (Local Development Mode) ----`);
@@ -122,6 +125,4 @@ if (!process.env.VERCEL_ENV || process.env.VERCEL_ENV === 'development') { // Ru
 }
 
 // --- Export the Express App for Vercel ---
-// This is the crucial part for Vercel. Vercel imports this `app` instance
-// and uses it to handle incoming requests in its serverless environment.
 module.exports = app;
