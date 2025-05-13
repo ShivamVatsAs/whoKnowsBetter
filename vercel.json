@@ -16,7 +16,7 @@
   ],
   "rewrites": [
   { "source": "/api/(.*)", "destination": "/backend/server.js" },
-  { "source": "/(.*)", "destination": "/frontend/dist/index.html" } // Point directly to the built file path
+  { "source": "/(.*)", "destination": "/frontend/dist/index.html" } 
 ],
   "env": {
     "NODE_ENV": "production"
