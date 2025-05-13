@@ -15,9 +15,9 @@
     }
   ],
   "rewrites": [
-  { "source": "/api/(.*)", "destination": "/backend/server.js" },
-  { "source": "/(.*)", "destination": "/frontend/dist/index.html" } 
-],
+    { "source": "/api/(.*)", "destination": "/backend/server.js" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "env": {
     "NODE_ENV": "production"
   }
